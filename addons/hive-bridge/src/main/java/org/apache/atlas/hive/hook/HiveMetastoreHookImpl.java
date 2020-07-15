@@ -24,7 +24,6 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.metastore.MetaStoreEventListener;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.metastore.events.*;
-import org.apache.hadoop.hive.metastore.utils.SecurityUtils;
 import org.apache.hadoop.hive.ql.metadata.Table;
 import org.apache.hadoop.hive.ql.plan.HiveOperation;
 import org.apache.hadoop.hive.shims.Utils;
@@ -64,13 +63,6 @@ public class HiveMetastoreHookImpl extends MetaStoreEventListener {
     }
 
     @Override
-    public void onAlterDatabase(AlterDatabaseEvent dbEvent) {
-        HiveOperationContext context = new HiveOperationContext(ALTERDATABASE, dbEvent);
-
-        hook.handleEvent(context);
-    }
-
-    @Override
     public void onCreateTable(CreateTableEvent tableEvent) {
         HiveOperationContext context = new HiveOperationContext(CREATETABLE, tableEvent);
 
@@ -94,9 +86,10 @@ public class HiveMetastoreHookImpl extends MetaStoreEventListener {
             context.setOperation(ALTERTABLE_RENAME);
         } else if (isColumnRename(oldTable, newTable, context)) {
             context.setOperation(ALTERTABLE_RENAMECOL);
-        } else if(isAlterTableProperty(tableEvent, "last_modified_time") ||
-                isAlterTableProperty(tableEvent, "transient_lastDdlTime")) {
+        } else if(isAlterTableProperty(tableEvent)){
             context.setOperation(ALTERTABLE_PROPERTIES); // map other alter table operations to ALTERTABLE_PROPERTIES
+        } else {
+            context.setOperation(ALTERTABLE_PROPERTIES);
         }
 
         hook.handleEvent(context);
@@ -125,10 +118,6 @@ public class HiveMetastoreHookImpl extends MetaStoreEventListener {
 
                     case DROPDATABASE:
                         event = new DropDatabase(context);
-                        break;
-
-                    case ALTERDATABASE:
-                        event = new AlterDatabase(context);
                         break;
 
                     case CREATETABLE:
@@ -162,12 +151,12 @@ public class HiveMetastoreHookImpl extends MetaStoreEventListener {
                 }
 
                 if (event != null) {
-                    final UserGroupInformation ugi = SecurityUtils.getUGI() == null ? Utils.getUGI() : SecurityUtils.getUGI();
+                    final UserGroupInformation ugi = Utils.getUGI();
 
                     super.notifyEntities(event.getNotificationMessages(), ugi);
                 }
             } catch (Throwable t) {
-                LOG.error("HiveMetastoreHook.handleEvent({}): failed to process operation {}", listenerEvent, t);
+                LOG.error("HiveMetastoreHook.handleEvent({}): failed to process operation - Message: {}, stacktrace: {}", listenerEvent, t, t.getStackTrace());
             }
         }
     }
@@ -192,10 +181,10 @@ public class HiveMetastoreHookImpl extends MetaStoreEventListener {
         return isColumnRename;
     }
 
-    private boolean isAlterTableProperty(AlterTableEvent tableEvent, String propertyToCheck) {
+    private boolean isAlterTableProperty(AlterTableEvent tableEvent) {
         final boolean ret;
-        String        oldTableModifiedTime = tableEvent.getOldTable().getParameters().get(propertyToCheck);
-        String        newTableModifiedTime = tableEvent.getNewTable().getParameters().get(propertyToCheck);
+        String        oldTableModifiedTime = tableEvent.getOldTable().getParameters().get("last_modified_time");
+        String        newTableModifiedTime = tableEvent.getNewTable().getParameters().get("last_modified_time");
 
 
         if (oldTableModifiedTime == null) {

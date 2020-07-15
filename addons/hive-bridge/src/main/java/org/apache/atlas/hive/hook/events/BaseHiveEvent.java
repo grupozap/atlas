@@ -41,7 +41,6 @@ import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.metastore.api.Order;
 import org.apache.hadoop.hive.metastore.api.SerDeInfo;
 import org.apache.hadoop.hive.metastore.api.StorageDescriptor;
-import org.apache.hadoop.hive.metastore.utils.SecurityUtils;
 import org.apache.hadoop.hive.ql.hooks.*;
 import org.apache.hadoop.hive.ql.hooks.LineageInfo.BaseColumnInfo;
 import org.apache.hadoop.hive.ql.hooks.LineageInfo.DependencyKey;
@@ -649,6 +648,7 @@ public abstract class BaseHiveEvent {
         if (queryStr != null) {
             queryStr = queryStr.toLowerCase().trim();
         }
+        ret.setAttribute(ATTRIBUTE_NAME, queryStr);
 
         ret.setAttribute(ATTRIBUTE_OPERATION_TYPE, getOperationName());
         String qualifiedName = getQualifiedName(inputs, outputs);
@@ -663,7 +663,6 @@ public abstract class BaseHiveEvent {
             }
         }
         ret.setAttribute(ATTRIBUTE_QUALIFIED_NAME, qualifiedName);
-        ret.setAttribute(ATTRIBUTE_NAME, qualifiedName);
         ret.setRelationshipAttribute(ATTRIBUTE_INPUTS, AtlasTypeUtil.getAtlasRelatedObjectIds(inputs, RELATIONSHIP_DATASET_PROCESS_INPUTS));
         ret.setRelationshipAttribute(ATTRIBUTE_OUTPUTS, AtlasTypeUtil.getAtlasRelatedObjectIds(outputs, RELATIONSHIP_PROCESS_DATASET_OUTPUTS));
 
@@ -672,19 +671,11 @@ public abstract class BaseHiveEvent {
         // mandatory attributes for hive process entity type.
         ret.setAttribute(ATTRIBUTE_START_TIME, System.currentTimeMillis());
         ret.setAttribute(ATTRIBUTE_END_TIME, System.currentTimeMillis());
-        if (context.isHiveProcessPopulateDeprecatedAttributes()) {
-            ret.setAttribute(ATTRIBUTE_USER_NAME, getUserName());
-            ret.setAttribute(ATTRIBUTE_QUERY_TEXT, queryStr);
-            ret.setAttribute(ATTRIBUTE_QUERY_ID, getQueryId());
-        } else {
-            ret.setAttribute(ATTRIBUTE_USER_NAME, EMPTY_ATTRIBUTE_VALUE);
-            ret.setAttribute(ATTRIBUTE_QUERY_TEXT, EMPTY_ATTRIBUTE_VALUE);
-            ret.setAttribute(ATTRIBUTE_QUERY_ID, EMPTY_ATTRIBUTE_VALUE);
-        }
+        ret.setAttribute(ATTRIBUTE_USER_NAME, EMPTY_ATTRIBUTE_VALUE);
+        ret.setAttribute(ATTRIBUTE_QUERY_TEXT, EMPTY_ATTRIBUTE_VALUE);
+        ret.setAttribute(ATTRIBUTE_QUERY_ID, EMPTY_ATTRIBUTE_VALUE);
         ret.setAttribute(ATTRIBUTE_QUERY_PLAN, "Not Supported");
         ret.setAttribute(ATTRIBUTE_RECENT_QUERIES, Collections.singletonList(queryStr));
-        ret.setAttribute(ATTRIBUTE_CLUSTER_NAME, getMetadataNamespace());
-
         return ret;
     }
 
@@ -700,7 +691,7 @@ public abstract class BaseHiveEvent {
         ret.setAttribute(ATTRIBUTE_QUALIFIED_NAME, hiveProcess.getAttribute(ATTRIBUTE_QUALIFIED_NAME).toString() +
                 QNAME_SEP_PROCESS + getQueryStartTime().toString() +
                 QNAME_SEP_PROCESS + endTime.toString());
-        ret.setAttribute(ATTRIBUTE_NAME, ret.getAttribute(ATTRIBUTE_QUALIFIED_NAME));
+        ret.setAttribute(ATTRIBUTE_NAME, queryStr + QNAME_SEP_PROCESS + getQueryStartTime().toString());
         ret.setAttribute(ATTRIBUTE_START_TIME, getQueryStartTime());
         ret.setAttribute(ATTRIBUTE_END_TIME, endTime);
         ret.setAttribute(ATTRIBUTE_USER_NAME, getUserName());
@@ -808,7 +799,7 @@ public abstract class BaseHiveEvent {
 
         if (context.isMetastoreHook()) {
             try {
-                ugi = SecurityUtils.getUGI();
+                ugi = getUgi();
             } catch (Exception e) {
                 //do nothing
             }
